@@ -1,7 +1,7 @@
 import paho.mqtt.client as mqtt
 import time
 
-def on_connect(client, userdata, flags, rc, properties=None):
+def on_connect(client, userdata, flags, rc):
     if rc == 0:
         print("Connected to MQTT broker successfully!")
     else:
@@ -13,29 +13,22 @@ def on_message(client, userdata, msg):
 def test_mqtt_connection():
     # Create MQTT client
     client = mqtt.Client(
-        client_id="mqttx_ccb44c85",
-
-
+        client_id="test_client",
+        protocol=mqtt.MQTTv311
     )
 
     # Set up callbacks
     client.on_connect = on_connect
     client.on_message = on_message
 
-    # Configure WebSocket connection
-    client.ws_set_options(
-        path="/mqtt",
-        headers=None
-    )
-
-    # Connect to broker (non-TLS WebSocket)
-    broker_address = "broker.mqttdashboard.com"
-    port = 1883
+    # Connect to HiveMQ public broker
+    broker_address = "broker.hivemq.com"
+    mqtt_port = 1883  # Standard MQTT port
     
-    print(f"Connecting to MQTT broker at {broker_address}:{port}...")
+    print(f"Connecting to MQTT broker at {broker_address}:{mqtt_port}...")
     
     try:
-        client.connect(broker_address, port, 60)
+        client.connect(broker_address, mqtt_port, 60)
         client.loop_start()
         
         # Subscribe to a test topic
@@ -57,7 +50,9 @@ def test_mqtt_connection():
         print("Test completed successfully!")
         
     except Exception as e:
-        print(f"Error occurred: {e}")
+        print(f"Error occurred: {str(e)}")
+        client.loop_stop()
+        client.disconnect()
 
 if __name__ == "__main__":
     test_mqtt_connection() 

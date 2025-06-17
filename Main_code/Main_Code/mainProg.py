@@ -59,7 +59,7 @@ dispHeight = 480
 # Settings section
 serialComEn = True
 ipCamEn = True
-kalmanEn = True
+kalmanEn = False
 flaskEn = True
 cv2WindowEn = True
 
@@ -69,7 +69,7 @@ CAMERA_RESOLUTION = (1280, 720)  # Adjust based on your Iriun Webcam settings
 
 # MQTT settings
 MQTT_BROKER = "broker.mqttdashboard.com"
-MQTT_PORT = 1883
+MQTT_PORT = 8000
 MQTT_KEEPALIVE = 60
 
 # TODO: to be used in future 
