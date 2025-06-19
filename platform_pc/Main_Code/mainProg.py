@@ -26,10 +26,10 @@ import logging
 from requests.exceptions import RequestException
 
 from roboArrangement import  arrageBot
-from MQTT_msg_pb2 import *
+# from MQTT_msg_pb2 import *  # Comment out protobuf import
 from flaskServing import *
 from helpFunc import *
-from serialCom import serialAutoSend  # Add this import
+# from serialCom import serialAutoSend  # REMOVED: All robot communication is now via MQTT
 
 # swarm id
 SWARM_ID = 0
@@ -42,7 +42,7 @@ TOPIC_SEVER_COM = 'swarm/' + str(SWARM_ID) + '/com'
 TOPIC_SEVER_BOT_POS = 'swarm/'+ str(SWARM_ID) + '/bot_pos'
 connected_clients = []
 robots_data = []
-newBotPosArr = BotPositionArr()
+# newBotPosArr = BotPositionArr()  # Removed - no longer using protobuf
 
 # image resolutions
 img_x = None
@@ -57,18 +57,18 @@ dispWidth = 640
 dispHeight = 480
 
 # Settings section
-serialComEn = True
+# serialComEn = True  # Remove or set to False to disable serial communication
 ipCamEn = True
 kalmanEn = True
 flaskEn = True
 cv2WindowEn = True
 
 # Camera settings
-IRIUN_CAMERA_INDEX = 1  # Usually 0 for the first virtual camera
+IRIUN_CAMERA_INDEX = 0  # Usually 0 for the first virtual camera
 CAMERA_RESOLUTION = (1280, 720)  # Adjust based on your Iriun Webcam settings
 
 # MQTT settings
-MQTT_BROKER = "broker.mqttdashboard.com"
+MQTT_BROKER = "test.mosquitto.org"
 MQTT_PORT = 1883
 MQTT_KEEPALIVE = 60
 
@@ -176,8 +176,8 @@ def homeBots(sharedData):
 def destinationCalculation(robots, broadcastPos, frame, client, sharedData):
     # check homing sequence
     homeBots(sharedData)
-    # create a array to store protobuf information
-    newBotPosArr = BotPositionArr()
+    # create a array to store JSON information instead of protobuf
+    robot_commands = []
 
     # need to optimize
     # print(robots)
@@ -202,7 +202,6 @@ def destinationCalculation(robots, broadcastPos, frame, client, sharedData):
     for i, robot_i in enumerate(result):
         # calculate the direction
         F = robot_i[0]*150000  # resultant force
-        # F = min(0.5, F)
         Dir = robot_i[1]  # relustant force direction
         dx = F*math.cos((Dir/180*math.pi))
         dy = F*math.sin((Dir/180*math.pi))
@@ -219,13 +218,15 @@ def destinationCalculation(robots, broadcastPos, frame, client, sharedData):
         # calculate the broadcast positions
         broadcastPos[keys[i]] = positions(robots[keys[i]][0], robots[keys[i]][3], [robots_data[i].init_pos[0] + dx, robots_data[i].init_pos[1] + dy], 0)
 
-        # prepare data to send through mqtt
-        newBot = BotPosition()
-        newBot.bot_id = i
-        newBot.x_cod = robots_data[i].init_pos[0]/(ROI['end_x']-ROI['start_x'])*30 
-        newBot.y_cod = robots_data[i].init_pos[1]/(ROI['end_x']-ROI['start_x'])*30
-        newBot.angle = 0
-        newBotPosArr.positions.append(newBot)
+        # prepare JSON data to send through mqtt instead of protobuf
+        robot_id = f"{keys[i]:02d}"  # e.g., '01', '02'
+        robot_command = {
+            "id": robot_id,
+            "startAngle": int(Dir),
+            "distance": int(F/1000),
+            "endAngle": int(Dir + 10)
+        }
+        robot_commands.append(robot_command)
        
         
         # print(distanceTwoPoints((int(robots_data[i].init_pos[0]), int(robots_data[i].init_pos[1])), tuple(robots_data[i].des_pos)))
@@ -251,11 +252,22 @@ def destinationCalculation(robots, broadcastPos, frame, client, sharedData):
     else:
         desReachedFlag = False
 
-    
-    # publishing data to mqtt
-    data = newBotPosArr.SerializeToString()
-    client.publish(TOPIC_SEVER_BOT_POS, data)
-    
+    # Check if all robots reached their destinations
+    if countDesReach == 0:
+        print("All robots reached their destinations")
+
+    # publishing JSON data to mqtt instead of protobuf
+    for robot_command in robot_commands:
+        topic = f"swarm/esp32/{robot_command['id']}/command"
+        json_msg = json.dumps(robot_command)
+        print(f"Publishing to {topic}: {json_msg}")  # Print to console
+        client.publish(topic, json_msg)
+        # Optionally, save to file:
+        # with open(f"robot_command_{robot_command['id']}.json", "w") as f:
+        #     f.write(json_msg)
+
+        
+    print('broadcastPos', broadcastPos)
     return broadcastPos
 
 
@@ -264,8 +276,12 @@ def camProcess(sharedData):
     broker_address = MQTT_BROKER
     print("creating new instance")
 
+    # Initialize destination coordinates
+    desX = 0
+    desY = 0
+
     # Create MQTT client with protocol version 3.1.1
-    client = mqtt.Client(protocol=mqtt.MQTTv311, transport='websockets')
+    client = mqtt.Client()
     client.on_message = on_message  # attach function to callback
 
     print("connecting to broker")
@@ -321,10 +337,13 @@ def camProcess(sharedData):
                     if kalmanEn:
                         # add new key to the set
                         robotDataSet.add(markerIds[i][0])
+                        # Initialize the dictionary entry first
+                        robotData[markerIds[i][0]] = [0,0,0,0,conData[0],True] # [center_point,top_two_cord,kalman,top_two_cord,destination,idle]
                         # adding data to the kalman algo
                         k_obj = kalman(conData[0], conData[1][0], conData[1][1]) 
                         robotData[markerIds[i][0]][2] = k_obj   # adding kalman object to the array
-                    robotData[markerIds[i][0]] = [0,0,0,0,conData[0],True] # [center_point,top_two_cord,kalman,top_two_cord,destination,idle]
+                    else:
+                        robotData[markerIds[i][0]] = [0,0,0,0,conData[0],True] # [center_point,top_two_cord,kalman,top_two_cord,destination,idle]
                 # adding data to the dictionary    
                 robotData[markerIds[i][0]][0] = conData[0]
                 robotData[markerIds[i][0]][1] = conData[1]
@@ -406,20 +425,22 @@ if __name__ == '__main__':
     if flaskEn: 
         p2.start() 
 
-    # send data to the arduino
-    if serialComEn:
-        p3 = Process(target=serialAutoSend, args=(sharedData,))
-    
-    if serialComEn:
-        p3.start()   
+    # --- SERIAL COMMUNICATION REMOVED ---
+    # if serialComEn:
+    #     p3 = Process(target=serialAutoSend, args=(sharedData,))
+    # if serialComEn:
+    #     p3.start()   
+    # --- END SERIAL COMMUNICATION REMOVAL ---
 
-    
+    # Example: To send a JSON MQTT command, use the following format:
+    # {"id":"01","startAngle":90,"distance":10,"endAngle":60}
+    # See test_json_mqtt.py or json_motor_example.py for how to send this via MQTT.
 
     p1.join()  
     if flaskEn: 
         p2.join() 
-    if serialComEn:
-        p3.join()
+    # if serialComEn:
+    #     p3.join()
     
 
 

@@ -51,16 +51,22 @@ class WifiCommunication:
         self.client.disconnect()
         self.is_connected = False
 
-    def send_data(self, esp_id, data):
-        """Send data to specific ESP32"""
+    def send_motor_command(self, robot_id, start_angle, distance, end_angle):
+        """Send motor control command to specific robot"""
         if not self.is_connected:
             return False
         try:
-            topic = f"swarm/esp32/{esp_id}/command"
+            topic = f"swarm/esp32/{robot_id}/command"
+            data = {
+                "id": f"MOTOR{robot_id:02d}",
+                "startAngle": start_angle,
+                "distance": distance,
+                "endAngle": end_angle
+            }
             self.client.publish(topic, json.dumps(data))
             return True
         except Exception as e:
-            print(f"Error sending data: {e}")
+            print(f"Error sending motor command: {e}")
             return False
 
     def get_latest_data(self):
@@ -78,13 +84,19 @@ def wifiAutoSend(shared_data):
         try:
             if shared_data[0]:  # Check if there's data to send
                 positions_data = shared_data[0]
-                # Send position data to each ESP32
+                # Send motor commands to each ESP32
                 for bot_id, pos_data in positions_data.items():
-                    wifi_com.send_data(str(bot_id), {
-                        'x': pos_data[0],
-                        'y': pos_data[1],
-                        'angle': pos_data[2]
-                    })
+                    # Calculate motor parameters from position data
+                    start_angle = 0  # You can calculate this from pos_data
+                    distance = 50    # You can calculate this from pos_data
+                    end_angle = 60   # You can calculate this from pos_data
+                    
+                    wifi_com.send_motor_command(
+                        str(bot_id),
+                        start_angle,
+                        distance,
+                        end_angle
+                    )
             time.sleep(0.1)  # Small delay to prevent overwhelming the network
         except Exception as e:
             print(f"Error in wifiAutoSend: {e}")

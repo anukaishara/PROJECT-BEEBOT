@@ -32,14 +32,14 @@ const char* ssid = "ZTE Blade V50 Design";
 const char* password = "12345678malith";
 
 // MQTT broker settings
-const char* mqtt_server = "broker.mqttdashboard.com";
+const char* mqtt_server = "test.mosquitto.org";
 const int mqtt_port = 1883;
 
 WiFiClient espClient;
 PubSubClient client(espClient);
 
 // Robot ID
-String myID = "1";
+String myID = "MOTOR01";
 
 const float turningThresh = 0.15;
 const double distThresh = 20;
@@ -237,8 +237,8 @@ void loop() {
     Serial.println("Movement command completed");
 
     // Send completion status
-    String clientId = "esp32_" + String((uint32_t)ESP.getEfuseMac(), HEX);
-    String statusTopic = "swarm/esp32/" + clientId + "/status";
+    String clientId = "01";
+    String statusTopic = "swarm/esp32/" + clientId + "command";
     StaticJsonDocument<128> doc;
     doc["status"] = "completed";
     doc["id"] = myID;
@@ -368,7 +368,7 @@ bool mqttReconnect() {
       return false;
     }
 
-    String clientId = "esp32_" + String((uint32_t)ESP.getEfuseMac(), HEX);
+    String clientId = "01";
     Serial.print("Attempting MQTT connection... ");
     
     if (client.connect(clientId.c_str())) {
