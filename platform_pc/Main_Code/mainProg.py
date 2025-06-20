@@ -6,34 +6,27 @@ from math import atan
 from kalman import kalman
 from positioning_algo import positions  
 import json
-import paho.mqtt.client as mqtt #import the client1
+import serial
+import socket
 from multiprocessing import Process, Manager, freeze_support
-from wifiCom import wifiAutoSend
+from socketCom import readSerialData, sendToSerial, serialAutoSend
 import movements
 from robot import robot
+import paho.mqtt.client as mqtt #import the client1
 from threading import Thread
 # from encrypt import aesEncrypt, aesEncryptString, aesDecrypt
 import json
 from inspect import currentframe, getframeinfo
 from config import *
-import paho.mqtt
-import paho.mqtt.client as mqttClient
-import ssl
-import sys
-import traceback
-import requests
-import logging
-from requests.exceptions import RequestException
 
 from roboArrangement import  arrageBot
-# from MQTT_msg_pb2 import *  # Comment out protobuf import
+from MQTT_msg_pb2 import *
 from flaskServing import *
 from helpFunc import *
-# from serialCom import serialAutoSend  # REMOVED: All robot communication is now via MQTT
 
 # swarm id
 SWARM_ID = 0
-swarm_name = "platformPC UOP"
+swarm_name = "Embedded_pro"
 BOT_COUNT = 2
 ARENA_DIM = 30
 
@@ -42,35 +35,33 @@ TOPIC_SEVER_COM = 'swarm/' + str(SWARM_ID) + '/com'
 TOPIC_SEVER_BOT_POS = 'swarm/'+ str(SWARM_ID) + '/bot_pos'
 connected_clients = []
 robots_data = []
-# newBotPosArr = BotPositionArr()  # Removed - no longer using protobuf
+newBotPosArr = BotPositionArr()
 
 # image resolutions
 img_x = None
 img_y = None 
+
+# MQTT settings
+MQTT_BROKER = "test.mosquitto.org"
+MQTT_PORT = 1883
+MQTT_KEEPALIVE = 60
+
 
 # region of intrest : {start_x, start_y, end_x, end_y}
 ROI = config['ROI']
 
 # parameters for saving the video
 frameRate = 21
-dispWidth = 640
-dispHeight = 480
+dispWidth = 1280
+dispHeight = 720
 
 # Settings section
-# serialComEn = True  # Remove or set to False to disable serial communication
+serialComEn = True
 ipCamEn = True
 kalmanEn = True
 flaskEn = True
 cv2WindowEn = True
 
-# Camera settings
-IRIUN_CAMERA_INDEX = 0  # Usually 0 for the first virtual camera
-CAMERA_RESOLUTION = (1280, 720)  # Adjust based on your Iriun Webcam settings
-
-# MQTT settings
-MQTT_BROKER = "test.mosquitto.org"
-MQTT_PORT = 1883
-MQTT_KEEPALIVE = 60
 
 # TODO: to be used in future 
 # important variables
@@ -79,6 +70,9 @@ MQTT_KEEPALIVE = 60
 # com port of the device
 comPort = 'COM6'
 
+# Camera settings
+IRIUN_CAMERA_INDEX = 0  # Usually 0 for the first virtual camera
+CAMERA_RESOLUTION = (1280, 960)  # Adjust based on your Iriun Webcam settings
 
 # flags
 desReachedFlag = False
@@ -96,7 +90,6 @@ if ipCamEn:
         sys.exit(1)
 else:
     cam = cv2.VideoCapture(0)  # Fallback to default camera
-
 # robot datas
 robotData = {} 
 robotDataSet = set()
@@ -166,7 +159,7 @@ def homeBots(sharedData):
     
     homing_seq = sharedData[3]
     if homing_seq:
-        # print('home', homing_seq)
+        print('home', homing_seq)
         destinations = json.loads(homing_seq)
         arrageBot(robotData , destinations)
         
@@ -176,8 +169,8 @@ def homeBots(sharedData):
 def destinationCalculation(robots, broadcastPos, frame, client, sharedData):
     # check homing sequence
     homeBots(sharedData)
-    # create a array to store JSON information instead of protobuf
-    robot_commands = []
+    # create a array to store protobuf information
+    newBotPosArr = BotPositionArr()
 
     # need to optimize
     # print(robots)
@@ -202,6 +195,7 @@ def destinationCalculation(robots, broadcastPos, frame, client, sharedData):
     for i, robot_i in enumerate(result):
         # calculate the direction
         F = robot_i[0]*150000  # resultant force
+        # F = min(0.5, F)
         Dir = robot_i[1]  # relustant force direction
         dx = F*math.cos((Dir/180*math.pi))
         dy = F*math.sin((Dir/180*math.pi))
@@ -209,7 +203,7 @@ def destinationCalculation(robots, broadcastPos, frame, client, sharedData):
 
         # add the destination circle
         frame = cv2.circle(frame, tuple(robots_data[i].des_pos), 1, (0,255,0), 2)
-        # print(frame.shape)
+        #print(frame.shape)
         #print((int(robots_data[i].init_pos[0] + dx), int(robots_data[i].init_pos[1] + dy)))
         frame = cv2.line(frame, (int(robots_data[i].init_pos[0]), int(robots_data[i].init_pos[1])), tuple(robots_data[i].des_pos), (0,255,0), 2)
         frame = cv2.line(frame, (int(robots_data[i].init_pos[0]), int(robots_data[i].init_pos[1])), (int(robots_data[i].init_pos[0]+dx), int(robots_data[i].init_pos[1]+dy)), (0,0,255), 2)
@@ -218,15 +212,13 @@ def destinationCalculation(robots, broadcastPos, frame, client, sharedData):
         # calculate the broadcast positions
         broadcastPos[keys[i]] = positions(robots[keys[i]][0], robots[keys[i]][3], [robots_data[i].init_pos[0] + dx, robots_data[i].init_pos[1] + dy], 0)
 
-        # prepare JSON data to send through mqtt instead of protobuf
-        robot_id = f"{keys[i]:02d}"  # e.g., '01', '02'
-        robot_command = {
-            "id": robot_id,
-            "startAngle": int(Dir),
-            "distance": int(F/1000),
-            "endAngle": int(Dir + 10)
-        }
-        robot_commands.append(robot_command)
+        # prepare data to send through mqtt
+        newBot = BotPosition()
+        newBot.bot_id = i
+        newBot.x_cod = robots_data[i].init_pos[0]/(ROI['end_x']-ROI['start_x'])*30 
+        newBot.y_cod = robots_data[i].init_pos[1]/(ROI['end_x']-ROI['start_x'])*30
+        newBot.angle = 0
+        newBotPosArr.positions.append(newBot)
        
         
         # print(distanceTwoPoints((int(robots_data[i].init_pos[0]), int(robots_data[i].init_pos[1])), tuple(robots_data[i].des_pos)))
@@ -252,22 +244,11 @@ def destinationCalculation(robots, broadcastPos, frame, client, sharedData):
     else:
         desReachedFlag = False
 
-    # Check if all robots reached their destinations
-    if countDesReach == 0:
-        print("All robots reached their destinations")
-
-    # publishing JSON data to mqtt instead of protobuf
-    for robot_command in robot_commands:
-        topic = f"swarm/esp32/{robot_command['id']}/command"
-        json_msg = json.dumps(robot_command)
-        print(f"Publishing to {topic}: {json_msg}")  # Print to console
-        client.publish(topic, json_msg)
-        # Optionally, save to file:
-        # with open(f"robot_command_{robot_command['id']}.json", "w") as f:
-        #     f.write(json_msg)
-
-        
-    print('broadcastPos', broadcastPos)
+    
+    # publishing data to mqtt
+    data = newBotPosArr.SerializeToString()
+    client.publish(TOPIC_SEVER_BOT_POS, data)
+    
     return broadcastPos
 
 
@@ -416,32 +397,36 @@ if __name__ == '__main__':
     
     # adding the cam process to the pool
     p1 = Process(target=camProcess, args=(sharedData,))
-    p1.start()
-    # flask Thread
-    if flaskEn:
-        p2 = Process(target=flaskThread, args=(sharedData,))
-
+    p2 = Process(target=flaskThread, args=(sharedData,))
+    
     # p1.start()  
+    p1.start() 
     if flaskEn: 
         p2.start() 
-
-    # --- SERIAL COMMUNICATION REMOVED ---
-    # if serialComEn:
-    #     p3 = Process(target=serialAutoSend, args=(sharedData,))
-    # if serialComEn:
-    #     p3.start()   
-    # --- END SERIAL COMMUNICATION REMOVAL ---
-
-    # Example: To send a JSON MQTT command, use the following format:
-    # {"id":"01","startAngle":90,"distance":10,"endAngle":60}
-    # See test_json_mqtt.py or json_motor_example.py for how to send this via MQTT.
-
-    p1.join()  
-    if flaskEn: 
-        p2.join() 
-    # if serialComEn:
-    #     p3.join()
     
+    # serial com Process
+    if serialComEn:
+        p3 = Process(target=serialAutoSend, args=(sharedData,))
+        p3.start()
+
+    try:
+        # Keep the main process alive
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("Keyboard interrupt detected. Terminating processes.")
+    finally:
+        # Terminate all child processes
+        if p1.is_alive():
+            p1.terminate()
+            p1.join()
+        if p2.is_alive():
+            p2.terminate()
+            p2.join()
+        if serialComEn and p3.is_alive():
+            p3.terminate()
+            p3.join()
+        print("All processes terminated.")
 
 
         

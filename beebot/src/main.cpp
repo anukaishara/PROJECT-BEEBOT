@@ -1,5 +1,4 @@
 #include <WiFi.h>
-#include <PubSubClient.h>
 #include <ArduinoJson.h>
 #include <PID_v1.h>
 #include <Wire.h>
@@ -9,8 +8,9 @@
 const int WIFI_TIMEOUT_MS = 10000;
 const int MQTT_TIMEOUT_MS = 5000;
 const int WATCHDOG_TIMEOUT_S = 10;
-const int MAX_MOTOR_SPEED = 100;
+const int MAX_MOTOR_SPEED = 10;
 const int MIN_MOTOR_SPEED = -100;
+double spd = 125;         // speed of the movements: [-255, 255]
 const int JSON_BUFFER_SIZE = 256;
 
 // Pin definitions
@@ -30,16 +30,17 @@ const int stby = 26;
 // Wi-Fi credentials - should be moved to a separate config file
 const char* ssid = "ZTE Blade V50 Design";
 const char* password = "12345678malith";
+const int port = 8080; // Choose a port (e.g., 8080, 1234, etc.)
+
 
 // MQTT broker settings
-const char* mqtt_server = "test.mosquitto.org";
-const int mqtt_port = 1883;
 
-WiFiClient espClient;
-PubSubClient client(espClient);
+
+
+
 
 // Robot ID
-String myID = "MOTOR01";
+String myID = "1";
 
 const float turningThresh = 0.15;
 const double distThresh = 20;
@@ -69,7 +70,7 @@ double arr[3];  // Temporary storage for values
 bool turningDone = false; // flag true if tuning is done
 bool movingDone = false;  // flag true if robot at the destination
 double prvstartAngle = 0; // vaiable used to track start angle changes
-double spd = 125;         // speed of the movements: [-255, 255]
+
 
 int tcount = 0;
 double dirCorrection = -1;
@@ -98,8 +99,6 @@ void turn();
 void move();
 void stopMotors();
 bool setup_wifi();
-void mqttCallback(char* topic, byte* payload, unsigned int length);
-bool mqttReconnect();
 void enableMotors();
 void disableMotors();
 void setupMotors();
@@ -109,6 +108,9 @@ void pulse(int pulsetime, int time);
 void intShow();
 void emergencyStop();
 
+WiFiServer server(port);
+WiFiClient client; // <-- Add this global client
+
 void setup() {
   Serial.begin(115200);
   Wire.begin(21, 22, 400000);
@@ -117,15 +119,14 @@ void setup() {
   // Initialize watchdog timer
   //esp_task_wdt_init(WATCHDOG_TIMEOUT_S, true);
   //esp_task_wdt_add(NULL);
-  
+
   if (!setup_wifi()) {
     Serial.println("Failed to connect to WiFi. Restarting...");
     ESP.restart();
   }
-  
-  client.setServer(mqtt_server, mqtt_port);
-  client.setCallback(mqttCallback);
-  
+
+  server.begin(); // <-- Now called after WiFi is connected
+
   setupMotors();
   Serial.println("Motors initialized");
 
@@ -154,30 +155,26 @@ void loop() {
       ESP.restart();
     }
   }
-  
-  if (!client.connected()) {
-    if (!mqttReconnect()) {
-      Serial.println("Failed to reconnect to MQTT. Restarting...");
-      ESP.restart();
+
+  // Accept new client if none is connected
+  if (!client || !client.connected()) {
+    client = server.available();
+    if (client) {
+      Serial.println("New client connected!");
     }
   }
-  
-  client.loop();
 
-
-  // LED status indication (non-blocking)
-  static unsigned long lastLEDUpdate = 0;
-  if(millis() - lastLEDUpdate > 1000) {
-    LED((client.connected() ? 2 : 4)); // Green=connected, Red=disconnected
-    lastLEDUpdate = millis();
+  // If client is connected, read data
+  if (client && client.connected() && client.available() > 0) {
+    char c = client.read();
+    //Serial.print("Received from WiFi: ");
+    //Serial.println(c);
+    dataDecoder(c);
+    LED(0);
   }
-  
 
-// Serial input for JSON commands
-// Serial input for JSON commands
-
-
-  if (newData) {
+  // start turning process if the start angle is above the "turningThresh"
+    if (newData) {
     Serial.println("Executing new movement command...");
 
     // Turn to start angle
@@ -235,18 +232,7 @@ void loop() {
 
     newData = false;
     Serial.println("Movement command completed");
-
-    // Send completion status
-    String clientId = "01";
-    String statusTopic = "swarm/esp32/" + clientId + "command";
-    StaticJsonDocument<128> doc;
-    doc["status"] = "completed";
-    doc["id"] = myID;
-    String statusMessage;
-    serializeJson(doc, statusMessage);
-    client.publish(statusTopic.c_str(), statusMessage.c_str());
-    Serial.println("Published status: " + statusMessage);
-  }
+}
 }
 
 
@@ -285,107 +271,20 @@ void MoR(int val) {
 bool setup_wifi() {
   unsigned long startAttemptTime = millis();
   WiFi.begin(ssid, password);
-  Serial.print("Connecting to WiFi");
-  
   while (WiFi.status() != WL_CONNECTED) {
-    if (millis() - startAttemptTime > WIFI_TIMEOUT_MS) {
-      Serial.println("\nWiFi connection timeout");
-      return false;
-    }
     delay(500);
-    Serial.print(".");
+    Serial.println("Connecting to WiFi...");
   }
   
-  Serial.println("\nWiFi connected");
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
+  Serial.println("Connected to WiFi!");
+  Serial.print("ESP32 IP Address: ");
+  Serial.println(WiFi.localIP()); // ← This is the IP you need
+  
+  Serial.println("TCP Server started on port " + String(port));
   return true;
 }
 
 
-
-
-
-void mqttCallback(char* topic, byte* payload, unsigned int length) {
-  if (length > JSON_BUFFER_SIZE) {
-    Serial.println("Error: Message too large");
-    return;
-  }
-
-  StaticJsonDocument<JSON_BUFFER_SIZE> doc;
-  DeserializationError error = deserializeJson(doc, payload, length);
-  
-  if (error) {
-    Serial.print("JSON parsing failed: ");
-    Serial.println(error.c_str());
-    return;
-  }
-
-  if (!doc.containsKey("id") || !doc["id"].is<String>()) {
-    Serial.println("Error: Missing or invalid 'id' field");
-    return;
-  }
-
-  if (!doc.containsKey("startAngle") || !doc["startAngle"].is<double>()) {
-    Serial.println("Error: Missing or invalid 'startAngle' field");
-    return;
-  }
-
-  const char* receivedId = doc["id"];
-  startAngle = doc["startAngle"].as<double>();
-  travelDis = doc["distance"];
-  endAngle = doc["endAngle"];
-  newData = true;
-
-  // Build a command string matching your serial format
-  String command = String(receivedId) + "," 
-                 + String(startAngle, 2) + "," 
-                 + String(travelDis, 2) + "," 
-                 + String(endAngle, 2) + "\\n";
-
-  // Feed each character to dataDecoder() like serial input
-Serial.println(command);
-for (int i = 0; i < command.length(); i++) {
-    dataDecoder(command[i]);
-    
-  }
-
-Serial.printf("Start: %.2f, End: %.2f, Distance: %.2f\n", startAngle, endAngle, travelDis);
-
-
-}
-
-
-
-
-
-bool mqttReconnect() {
-  unsigned long startAttemptTime = millis();
-  
-  while (!client.connected()) {
-    if (millis() - startAttemptTime > MQTT_TIMEOUT_MS) {
-      Serial.println("MQTT connection timeout");
-      return false;
-    }
-
-    String clientId = "01";
-    Serial.print("Attempting MQTT connection... ");
-    
-    if (client.connect(clientId.c_str())) {
-      Serial.println("connected");
-      String topic = "swarm/esp32/" + clientId + "/command";
-      client.subscribe(topic.c_str());
-      Serial.println("Subscribed to topic: " + topic);
-      return true;
-    }
-    
-    Serial.print("failed, rc=");
-    Serial.print(client.state());
-    Serial.println(" trying again in 1 second");
-    delay(1000);
-  }
-  return true;
-}
 
 
 
@@ -547,61 +446,62 @@ int count = 0; //temp
 void dataDecoder(char c)
 {
   LED(4);        //red
-  if (c == '\n') // if the endline char
+  if (c == '\n' || c == ',') // treat both comma and newline as terminators
   {
-    idflag = true; // start to read the id
-    good = false;  // id is not good
-    idx = 0;     // reset the index
+    if (idflag) // if id is getting
+    {
+      if (id == myID){
+        LED(1); //blue
+        good = true; // id is good
+        delay(20);
+        LED(0); //blue
+      }
+    }
+    if (good) // if id is good
+    {
+      arr[idx] = id.toDouble(); // update the arr
+      if (idx == 2)
+      {
+        newData = true; // set the newdata flag
+        tcount = 0;     //when tcount < delay_constant the motor PID will start
+        startAngle = arr[1]; // do what you want
+        endAngle = arr[3];
+        travelDis = arr[2];
+        Serial.print("Received Data -> startAngle: ");
+        Serial.print(startAngle);
+        Serial.print(", travelDis: ");
+        Serial.print(travelDis);
+        Serial.print(", endAngle: ");
+        Serial.println(endAngle);
+      }
+      idx = (idx + 1) % 3; // increment the index
+    }
+    id = "";        // reset the id
+    idflag = false; // id reading done
+    if (c == '\n') {
+      idflag = true; // start to read the id on newline
+      good = false;  // id is not good
+      idx = 0;     // reset the index
+    }
   }
   else
   {
-    if (c == ',') // if comma found
-    {
-      if (good) // if id is good
-      {
-
-        arr[idx] = id.toDouble(); // update the arr
-        if (idx == 2)
-        {
-          newData = true; // set the newdata flag
-          tcount = 0;     //when tcount < delay_constant the motor PID will start
-
-//          Serial.println("data recieved");
-          startAngle = arr[0]; // do what you want
-          endAngle = arr[2];
-          travelDis = arr[1];
-//          Serial.println("data:" + String(st  artAngle) + " , " + String(endAngle) + " , " + String(travelDis) + ", " + String(angle));
-        }
-        idx = (idx + 1) % 3; // increment the index
-      }
-      if (idflag) // if id is getting
-      {
-        if (id == myID){
-          LED(1); //blue
-          good = true; // id is good
-          delay(20);
-          LED(0); //blue
-        }
-      }
-      id = "";        // reset the id
-      idflag = false; // id reading done`
-    }
-    else
-      id += c; // append char to the id
+    id += c; // append char to the id
   }
-
-  
-
+  if (client && client.connected() && client.available() > 0) {
+    char c = client.read();
+    //Serial.print("Received from WiFi: ");
+    //Serial.println(c);
+    dataDecoder(c);
+    LED(0);
+  }
 }
-
-
 
 
 
 void turn()
 { 
-  
-  turningDone = false;
+   turningDone = false;
   angle = 0;                               //set the current angle to zer0
   //Setpoint = -1 * radToDegree(startAngle); // set the setpoint as the startAngle
   Setpoint =startAngle;
@@ -612,7 +512,6 @@ void turn()
   while (!turningDone)
   {
 
-    client.loop();
     LED(2); //green
 
     if (prvstartAngle != startAngle) // if there any changes in startAngle, set the current angle to zero and set the set point
@@ -645,10 +544,16 @@ void turn()
   MoL(0);
   MoR(0);
 
- 
 }
 
 
+
+void emergencyStop() {
+  MoL(0);
+  MoR(0);
+  disableMotors();
+  LED(4); // Red LED to indicate emergency stop
+}
 
 void moveForward(int speed) {
   MoL(speed);
@@ -661,14 +566,3 @@ void stopMotors() {
   MoL(0);
   MoR(0);
 }
-
-
-
-
-void emergencyStop() {
-  MoL(0);
-  MoR(0);
-  disableMotors();
-  LED(4); // Red LED to indicate emergency stop
-}
-

@@ -8,7 +8,7 @@ def on_connect(client, userdata, flags, rc, properties=None):
     else:
         print(f"Failed to connect to MQTT broker, return code: {rc}")
 
-def on_message(client, userdata, msg):
+def on_message(client, userdata, msg, properties=None):
     try:
         # Try to parse as JSON
         data = json.loads(msg.payload.decode())

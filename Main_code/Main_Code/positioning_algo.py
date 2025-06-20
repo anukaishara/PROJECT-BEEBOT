@@ -1,79 +1,37 @@
 from math import atan, sqrt, acos, pi
-from typing import Tuple, List
-import logging
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('positioning.log'),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
 
 # dot product of two vectors
-def dot_product(a: List[float], b: List[float]) -> float:
-    """Calculate dot product of two vectors."""
-    try:
-        return (a[0] * b[0]) + (a[1] * b[1])
-    except (IndexError, TypeError) as e:
-        logger.error(f"Error calculating dot product: {e}")
-        return 0.0
+def dot_poduct(a, b):
+        return ((a[0] * b[0]) + (a[1] * b[1]))
 
 # get the modulus of a vector
-def modulus(a: List[float]) -> float:
-    """Calculate modulus of a vector."""
-    try:
+def modulus(a):
+        
         return sqrt(pow(a[0],2) + pow(a[1], 2))
-    except (IndexError, TypeError) as e:
-        logger.error(f"Error calculating modulus: {e}")
-        return 0.0
 
 # angle between two vectors
-def angle(a: List[float], b: List[float]) -> float:
-    """Calculate angle between two vectors."""
-    try:
-        mod_a = modulus(a)
-        mod_b = modulus(b)
-        if mod_a == 0 or mod_b == 0:
-            logger.warning("Zero vector detected in angle calculation")
-            return 0.0
-        return acos(abs(dot_product(a,b) / (mod_a * mod_b))) 
-    except Exception as e:
-        logger.error(f"Error calculating angle: {e}")
-        return 0.0
+def angle(a, b):
+    mod_a = modulus(a)
+    mod_b = modulus(b)
+    if mod_a == 0 or mod_b == 0:
+        return 0  # return 0 angle if either vector has zero length
+    cos_angle = dot_poduct(a, b) / (mod_a * mod_b)
+    # Ensure the value is within [-1, 1] to avoid numerical precision issues
+    cos_angle = max(-1.0, min(1.0, cos_angle))
+    return acos(abs(cos_angle)) * modulus(b)
 
 # distance between two points
-def distance(p0: List[float], p1: List[float]) -> float:
-    """Calculate distance between two points."""
-    try:
+def distance(p0, p1):
         return sqrt(pow(p0[1] - p1[1], 2) + pow(p0[0] - p1[0], 2))
-    except (IndexError, TypeError) as e:
-        logger.error(f"Error calculating distance: {e}")
-        return 0.0
 
 # function to calculate the turning angles
-def positions(start_pos: List[float], head_pos: List[List[float]], end_pos: List[float], end_angle: float) -> Tuple[float, float, float]:
-    """
-    Calculate the turning angles and distance for robot movement.
-    
-    Args:
-        start_pos: Starting position [x, y]
-        head_pos: Head position [[x1, y1], [x2, y2]]
-        end_pos: End position [x, y]
-        end_angle: End angle in radians
-        
-    Returns:
-        Tuple of (start_turn_angle, distance_to_travel, end_angle)
-    """
-    try:
+def positions(start_pos, head_pos, end_pos, end_angle):
         # points and vectors are in the diagram
         x0, y0 = start_pos[0], start_pos[1]
         xd, yd = end_pos[0], end_pos[1]
         xfl, yfl = head_pos[0][0], head_pos[0][1]
         xfr, yfr = head_pos[1][0], head_pos[1][1]
+        xd, yd = end_pos[0], end_pos[1]
         xf, yf = (xfr + xfl) / 2, (yfr + yfl) / 2
 
         a = [xd - x0, yd - y0]
@@ -113,8 +71,3 @@ def positions(start_pos: List[float], head_pos: List[List[float]], end_pos: List
 
         # returning the start turning angle, distance to travel, end turning angle
         return (round(start_turn, 4), round(dist_A, 4), round(end_angle, 4))
-    except Exception as e:
-        logger.error(f"Error in positions calculation: {e}")
-        return (0.0, 0.0, 0.0)
-
-

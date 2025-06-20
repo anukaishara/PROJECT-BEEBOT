@@ -7,4 +7,5 @@ class robot():
         # end_position
         self.des_pos = e_pos
         self.des_angle = e_angle
+        self.is_idle = True
         

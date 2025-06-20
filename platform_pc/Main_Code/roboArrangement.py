@@ -71,8 +71,11 @@ def idleBot(listOfBots, robotList):
     global allBots, workingBots, botMapping, messageBots
 
     for bot in listOfBots:
-        workingBots.remove(bot)
-        robotList[botMapping[bot]][5] = True
+        if bot in botMapping:
+            workingBots.remove(bot)
+            robotList[botMapping[bot]][5] = True
+        else:
+            print(f"Warning: bot {bot} not found in botMapping, skipping idle.")
 
 # def new message
 def arrageBot(robotList, message):

@@ -6,30 +6,23 @@ from math import atan
 from kalman import kalman
 from positioning_algo import positions  
 import json
-import paho.mqtt.client as mqtt #import the client1
+import serial
+import socket
 from multiprocessing import Process, Manager, freeze_support
-from wifiCom import wifiAutoSend
+from socketCom import readSerialData, sendToSerial, serialAutoSend
 import movements
 from robot import robot
+import paho.mqtt.client as mqtt #import the client1
 from threading import Thread
 # from encrypt import aesEncrypt, aesEncryptString, aesDecrypt
 import json
 from inspect import currentframe, getframeinfo
 from config import *
-import paho.mqtt
-import paho.mqtt.client as mqttClient
-import ssl
-import sys
-import traceback
-import requests
-import logging
-from requests.exceptions import RequestException
 
 from roboArrangement import  arrageBot
 from MQTT_msg_pb2 import *
 from flaskServing import *
 from helpFunc import *
-from serialCom import serialAutoSend  # Add this import
 
 # swarm id
 SWARM_ID = 0
@@ -48,6 +41,12 @@ newBotPosArr = BotPositionArr()
 img_x = None
 img_y = None 
 
+# MQTT settings
+MQTT_BROKER = "test.mosquitto.org"
+MQTT_PORT = 1883
+MQTT_KEEPALIVE = 60
+
+
 # region of intrest : {start_x, start_y, end_x, end_y}
 ROI = config['ROI']
 
@@ -59,18 +58,10 @@ dispHeight = 480
 # Settings section
 serialComEn = True
 ipCamEn = True
-kalmanEn = False
+kalmanEn = True
 flaskEn = True
 cv2WindowEn = True
 
-# Camera settings
-IRIUN_CAMERA_INDEX = 1  # Usually 0 for the first virtual camera
-CAMERA_RESOLUTION = (1280, 720)  # Adjust based on your Iriun Webcam settings
-
-# MQTT settings
-MQTT_BROKER = "broker.mqttdashboard.com"
-MQTT_PORT = 8000
-MQTT_KEEPALIVE = 60
 
 # TODO: to be used in future 
 # important variables
@@ -79,6 +70,9 @@ MQTT_KEEPALIVE = 60
 # com port of the device
 comPort = 'COM6'
 
+# Camera settings
+IRIUN_CAMERA_INDEX = 0  # Usually 0 for the first virtual camera
+CAMERA_RESOLUTION = (1280, 720)  # Adjust based on your Iriun Webcam settings
 
 # flags
 desReachedFlag = False
@@ -96,7 +90,6 @@ if ipCamEn:
         sys.exit(1)
 else:
     cam = cv2.VideoCapture(0)  # Fallback to default camera
-
 # robot datas
 robotData = {} 
 robotDataSet = set()
@@ -166,7 +159,7 @@ def homeBots(sharedData):
     
     homing_seq = sharedData[3]
     if homing_seq:
-        # print('home', homing_seq)
+        print('home', homing_seq)
         destinations = json.loads(homing_seq)
         arrageBot(robotData , destinations)
         
@@ -264,8 +257,12 @@ def camProcess(sharedData):
     broker_address = MQTT_BROKER
     print("creating new instance")
 
+    # Initialize destination coordinates
+    desX = 0
+    desY = 0
+
     # Create MQTT client with protocol version 3.1.1
-    client = mqtt.Client(protocol=mqtt.MQTTv311, transport='websockets')
+    client = mqtt.Client()
     client.on_message = on_message  # attach function to callback
 
     print("connecting to broker")
@@ -321,10 +318,13 @@ def camProcess(sharedData):
                     if kalmanEn:
                         # add new key to the set
                         robotDataSet.add(markerIds[i][0])
+                        # Initialize the dictionary entry first
+                        robotData[markerIds[i][0]] = [0,0,0,0,conData[0],True] # [center_point,top_two_cord,kalman,top_two_cord,destination,idle]
                         # adding data to the kalman algo
                         k_obj = kalman(conData[0], conData[1][0], conData[1][1]) 
                         robotData[markerIds[i][0]][2] = k_obj   # adding kalman object to the array
-                    robotData[markerIds[i][0]] = [0,0,0,0,conData[0],True] # [center_point,top_two_cord,kalman,top_two_cord,destination,idle]
+                    else:
+                        robotData[markerIds[i][0]] = [0,0,0,0,conData[0],True] # [center_point,top_two_cord,kalman,top_two_cord,destination,idle]
                 # adding data to the dictionary    
                 robotData[markerIds[i][0]][0] = conData[0]
                 robotData[markerIds[i][0]][1] = conData[1]
@@ -397,30 +397,36 @@ if __name__ == '__main__':
     
     # adding the cam process to the pool
     p1 = Process(target=camProcess, args=(sharedData,))
-    p1.start()
-    # flask Thread
-    if flaskEn:
-        p2 = Process(target=flaskThread, args=(sharedData,))
-
+    p2 = Process(target=flaskThread, args=(sharedData,))
+    
     # p1.start()  
+    p1.start() 
     if flaskEn: 
         p2.start() 
-
-    # send data to the arduino
+    
+    # serial com Process
     if serialComEn:
         p3 = Process(target=serialAutoSend, args=(sharedData,))
-    
-    if serialComEn:
-        p3.start()   
+        p3.start()
 
-    
-
-    p1.join()  
-    if flaskEn: 
-        p2.join() 
-    if serialComEn:
-        p3.join()
-    
+    try:
+        # Keep the main process alive
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("Keyboard interrupt detected. Terminating processes.")
+    finally:
+        # Terminate all child processes
+        if p1.is_alive():
+            p1.terminate()
+            p1.join()
+        if p2.is_alive():
+            p2.terminate()
+            p2.join()
+        if serialComEn and p3.is_alive():
+            p3.terminate()
+            p3.join()
+        print("All processes terminated.")
 
 
         

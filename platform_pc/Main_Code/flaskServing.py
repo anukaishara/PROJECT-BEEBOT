@@ -52,12 +52,12 @@ def home():
     print('Home')
     data = [
         {
-            'x': 417,
-            'y': 445,
+            'x': 200,
+            'y': 150,
         },
         {
-            'x': 515,
-            'y': 445,
+            'x': 1000,
+            'y': 800,
         },
     ]
     app.config['frame'][3] = json.dumps(data)
@@ -68,8 +68,8 @@ def homeBot_1():
     print('Home')
     data = [
         {
-            'x': 515,
-            'y': 445,
+            'x': 200,
+            'y': 150,
         },
     ]
     app.config['frame'][3] = json.dumps(data)
@@ -80,8 +80,8 @@ def homeBot_2():
     print('Home')
     data = [
         {
-            'x': 417,
-            'y': 445,
+            'x': 1000,
+            'y': 800,
         },
     ]
     app.config['frame'][3] = json.dumps(data)

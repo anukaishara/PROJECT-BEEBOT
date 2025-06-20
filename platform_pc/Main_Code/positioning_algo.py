@@ -6,11 +6,19 @@ def dot_poduct(a, b):
 
 # get the modulus of a vector
 def modulus(a):
+        
         return sqrt(pow(a[0],2) + pow(a[1], 2))
 
 # angle between two vectors
 def angle(a, b):
-        return acos(abs(dot_poduct(a,b) / (modulus(a) * modulus(b)))) 
+    mod_a = modulus(a)
+    mod_b = modulus(b)
+    if mod_a == 0 or mod_b == 0:
+        return 0  # return 0 angle if either vector has zero length
+    cos_angle = dot_poduct(a, b) / (mod_a * mod_b)
+    # Ensure the value is within [-1, 1] to avoid numerical precision issues
+    cos_angle = max(-1.0, min(1.0, cos_angle))
+    return acos(abs(cos_angle)) * modulus(b)
 
 # distance between two points
 def distance(p0, p1):
