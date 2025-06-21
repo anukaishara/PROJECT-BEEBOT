@@ -62,8 +62,14 @@
             <div class="w3-container w3-cursive">
                 <h1 style="font-weight: bold; font-style: italic; font-family:'Garamond'; font-size: 30px;">TOP VIEW OF THE SWARM PLATFORM</h1>
             </div>
-            <div class="container" style=" background-color: #707174; padding: 20px;">
-                <img src="{{ url_for('video_feed') }}" height="100%" class="view">
+            <div class="container" style="background-color: #707174; padding: 20px;">
+                <div id="camera-container" style="position: relative;">
+                    <img id="video-feed" src="{{ url_for('video_feed') }}" width="640" height="480" style="display: block;">
+                    <div id="camera-error" style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; text-align: center;">
+                        <h3>Camera Feed Unavailable</h3>
+                        <p>Please check camera connection and refresh the page</p>
+                    </div>
+                </div>
             </div>
         </div>
 
