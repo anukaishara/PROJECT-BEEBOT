@@ -27,26 +27,62 @@ def sendToSerial(sock, data):
         sock.send(data.encode())
     except socket.error as e:
         print(f"Failed to send data: {e}")
+        raise  # Re-raise the exception to handle it in the calling function
 
 def serialAutoSend(sharedData):
-    interval = 0.25  # frequency in seconds
-    host = '192.168.192.79'  # replace with your server IP
-    port = 8080     # replace with your server port
+    interval = 0.25  # 250ms between sends
+    reconnect_delay = 5  # seconds between reconnect attempts
+    hosts = {
+        '1': '192.168.192.79',  # ESP32 with ID=1
+       # '2': '192.168.1.102'   # ESP32 with ID=2
+    }
+    port = 8080
     
-    try:
-        # Create a TCP/IP socket
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect((host, port))
-        print(f"Connected to {host}:{port}")
-        
-        while True:
-            if sharedData[2]:  # if operator GUI enabled
-                for key in sharedData[0]:
-                    data = str(key) + ',' + ','.join(map(str, sharedData[0][key])) + ','
-                    print("Network send:", data)
-                    sendToSerial(sock, data)
-                    time.sleep(interval)
-    except socket.error as e:
-        print(f"Network error: {e}")
-    finally:
-        sock.close()
+    # Create a socket for each device
+    sockets = {id: None for id in hosts}
+    
+    while True:
+        try:
+            # Connect to all devices
+            for id, host in hosts.items():
+                if sockets[id] is None:
+                    try:
+                        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                        sock.settimeout(5)
+                        sock.connect((host, port))
+                        sockets[id] = sock
+                        print(f"Connected to device {id} at {host}")
+                    except Exception as e:
+                        print(f"Failed to connect to device {id}: {e}")
+                        sockets[id] = None
+            
+            # Send data to all connected devices
+            for id, sock in sockets.items():
+                if sock is not None and sharedData[2]:  # If GUI enabled
+                    print(f"Sending data to device {id}")
+                    for id in sharedData[0]:  # If we have data for this ID
+                        data = str(id) + ',' + ','.join(map(str, sharedData[0][id])) 
+                        print("Network send:", data)
+                        
+                        try:
+                            sock.sendall((data + "\n").encode())
+                            # Wait for acknowledgment
+                            ack = sock.recv(32)
+                            if not ack:
+                                raise ConnectionError("Connection closed")
+                            print(f"Device {id} response: {ack.decode().strip()}")
+                        except Exception as e:
+                            print(f"Error with device {id}: {e}")
+                            sockets[id] = None  # Mark for reconnection
+            
+            time.sleep(interval)
+            
+        except Exception as e:
+            print(f"System error: {e}")
+            # Close all sockets on error
+            for id in sockets:
+                if sockets[id] is not None:
+                    sockets[id].close()
+                    sockets[id] = None
+            print(f"Reconnecting in {reconnect_delay} seconds...")
+            time.sleep(reconnect_delay)

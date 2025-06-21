@@ -37,3 +37,13 @@ void loop() {
     client.stop();
   }
 }
+
+
+        Serial.print("Received Data -> startAngle: ");
+        Serial.print(startAngle);
+        Serial.print(", travelDis: ");
+        Serial.print(travelDis);
+        Serial.print(", endAngle: ");
+        Serial.println(endAngle);
+
+

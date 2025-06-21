@@ -56,7 +56,7 @@ dispWidth = 1280
 dispHeight = 720
 
 # Settings section
-serialComEn = True
+serialComEn =  True
 ipCamEn = True
 kalmanEn = True
 flaskEn = True
@@ -354,7 +354,8 @@ def camProcess(sharedData):
             if (19 in robotData and True):
                 desX = robotData[19][0][0]
                 desY = robotData[19][0][1]
-        except:
+        except (KeyError, IndexError, TypeError) as e:
+            print(f"Error accessing robot data for ID 19: {e}")
             pass
 
         # adding to the shared variable

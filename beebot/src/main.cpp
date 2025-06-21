@@ -13,6 +13,9 @@ const int MIN_MOTOR_SPEED = -100;
 double spd = 125;         // speed of the movements: [-255, 255]
 const int JSON_BUFFER_SIZE = 256;
 
+const String RESPONSE_OK = "OK\r\n";
+const String RESPONSE_ERROR = "ERROR\r\n";
+
 // Pin definitions
 const int redLED = 4;
 const int blueLED = 16;
@@ -107,6 +110,7 @@ bool calculate_IMU_error();
 void pulse(int pulsetime, int time);
 void intShow();
 void emergencyStop();
+void processCompleteMessage(String message);
 
 WiFiServer server(port);
 WiFiClient client; // <-- Add this global client
@@ -115,6 +119,9 @@ void setup() {
   Serial.begin(115200);
   Wire.begin(21, 22, 400000);
   Serial.println("BeeBot Starting...");
+
+  Serial.println("TCP Server started on port " + String(port));
+  Serial.println("Waiting for client connection...");
   
   // Initialize watchdog timer
   //esp_task_wdt_init(WATCHDOG_TIMEOUT_S, true);
@@ -158,19 +165,19 @@ void loop() {
 
   // Accept new client if none is connected
   if (!client || !client.connected()) {
-    client = server.available();
-    if (client) {
-      Serial.println("New client connected!");
-    }
+      client = server.available();
+      if (client) {
+        Serial.println("New client connected!");
+        client.setTimeout(100); // Set a reasonable timeout
+      }
   }
 
   // If client is connected, read data
-  if (client && client.connected() && client.available() > 0) {
-    char c = client.read();
-    //Serial.print("Received from WiFi: ");
-    //Serial.println(c);
-    dataDecoder(c);
-    LED(0);
+  if (client && client.connected()) {
+    while (client.available() > 0) {
+      char c = client.read();
+      dataDecoder(c);
+    }
   }
 
   // start turning process if the start angle is above the "turningThresh"
@@ -443,57 +450,72 @@ int count = 0; //temp
 
 
 // function to decode
-void dataDecoder(char c)
-{
-  LED(4);        //red
-  if (c == '\n' || c == ',') // treat both comma and newline as terminators
-  {
-    if (idflag) // if id is getting
-    {
-      if (id == myID){
-        LED(1); //blue
-        good = true; // id is good
-        delay(20);
-        LED(0); //blue
-      }
+void dataDecoder(char c) {
+  static String currentMessage = "";
+  
+  if (c == '\n') {  // End of message
+    // Process complete message
+    if (currentMessage.length() > 0) {
+      processCompleteMessage(currentMessage);
+      currentMessage = "";
     }
-    if (good) // if id is good
-    {
-      arr[idx] = id.toDouble(); // update the arr
-      if (idx == 2)
-      {
-        newData = true; // set the newdata flag
-        tcount = 0;     //when tcount < delay_constant the motor PID will start
-        startAngle = arr[1]; // do what you want
-        endAngle = arr[3];
-        travelDis = arr[2];
-        Serial.print("Received Data -> startAngle: ");
-        Serial.print(startAngle);
-        Serial.print(", travelDis: ");
-        Serial.print(travelDis);
-        Serial.print(", endAngle: ");
-        Serial.println(endAngle);
-      }
-      idx = (idx + 1) % 3; // increment the index
-    }
-    id = "";        // reset the id
-    idflag = false; // id reading done
-    if (c == '\n') {
-      idflag = true; // start to read the id on newline
-      good = false;  // id is not good
-      idx = 0;     // reset the index
-    }
+  } else {
+    currentMessage += c;
   }
-  else
-  {
-    id += c; // append char to the id
+}
+
+void processCompleteMessage(String message) {
+  // Reset flags
+  idflag = true;
+  good = false;
+  idx = 0;
+  
+  int commaPos1 = message.indexOf(',');
+  if (commaPos1 == -1) {
+    client.print(RESPONSE_ERROR);
+    return;
   }
-  if (client && client.connected() && client.available() > 0) {
-    char c = client.read();
-    //Serial.print("Received from WiFi: ");
-    //Serial.println(c);
-    dataDecoder(c);
-    LED(0);
+
+  String receivedId = message.substring(0, commaPos1);
+  String remainingData = message.substring(commaPos1 + 1);
+
+  // Split remaining data by commas
+  int commaPos2 = remainingData.indexOf(',');
+  int commaPos3 = remainingData.indexOf(',', commaPos2 + 1);
+
+  if (commaPos2 == -1 || commaPos3 == -1) {
+    client.print(RESPONSE_ERROR);
+    return;
+  }
+
+  // Check ID match
+  if (receivedId == myID) {
+    good = true;
+    
+    // Convert values to doubles
+    arr[0] = remainingData.substring(0, commaPos2).toDouble();
+    arr[1] = remainingData.substring(commaPos2 + 1, commaPos3).toDouble();
+    arr[2] = remainingData.substring(commaPos3 + 1).toDouble();
+
+    // Update global variables
+    startAngle = arr[0];
+    travelDis = arr[1];
+    endAngle = arr[2];
+    
+    // Send acknowledgment
+    client.print(RESPONSE_OK);
+    Serial.printf("Device %s received: %.2f,%.2f,%.2f\n", myID.c_str(), startAngle, travelDis, endAngle);
+    
+    // Set flags for movement processing
+    newData = true;
+    tcount = 0;
+    turningDone = false;
+    movingDone = false;
+  }  else {
+    // Message not for this device - send error response
+    client.print(RESPONSE_ERROR);
+    Serial.printf("Message for ID %s received by device %s\n", 
+                 receivedId.c_str(), myID.c_str());
   }
 }
 
@@ -501,7 +523,7 @@ void dataDecoder(char c)
 
 void turn()
 { 
-   turningDone = false;
+  turningDone = false;
   angle = 0;                               //set the current angle to zer0
   //Setpoint = -1 * radToDegree(startAngle); // set the setpoint as the startAngle
   Setpoint =startAngle;
@@ -528,7 +550,7 @@ void turn()
     Input = (double)angle;
     myPID.Compute();
 
-    Serial.println(String(startAngle) + ", " + String(Setpoint) + "," + String(Input) + ", " + String(Output) + ", ");
+    //Serial.println(String(startAngle) + ", " + String(Setpoint) + "," + String(Input) + ", " + String(Output) + ", ");
 
     MoL(-Output);
     MoR(Output);
