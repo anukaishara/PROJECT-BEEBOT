@@ -41,10 +41,14 @@ newBotPosArr = BotPositionArr()
 img_x = None
 img_y = None 
 
+
+
+
 # MQTT settings
-MQTT_BROKER = "test.mosquitto.org"
-MQTT_PORT = 1883
+MQTT_BROKER = "broker.mqtt-dashboard.com"
+MQTT_PORT = 8000
 MQTT_KEEPALIVE = 60
+ws_path = "/mqtt"
 
 
 # region of intrest : {start_x, start_y, end_x, end_y}
@@ -262,7 +266,8 @@ def camProcess(sharedData):
     desY = 0
 
     # Create MQTT client with protocol version 3.1.1
-    client = mqtt.Client()
+    client = mqtt.Client(transport="websockets")
+    client.ws_set_options(path=ws_path)
     client.on_message = on_message  # attach function to callback
 
     print("connecting to broker")
@@ -296,14 +301,14 @@ def camProcess(sharedData):
                 # plotting rectangles around the markers
                 pts = np.array([markerCorners[i][0][0],markerCorners[i][0][1],markerCorners[i][0][2],markerCorners[i][0][3]], np.int32)
                 pts = pts.reshape((-1,1,2))
-                cv2.polylines(frame,[pts],True,(0,255,255))
+                cv2.polylines(frame,[pts],True,(0,255,255),5)
 
                 # converting to center point
                 conData = convert(markerCorners[i][0])
                 frame = cv2.circle(frame, tuple(conData[0]), 1, (255,0,0), 2)
 
-                frame = cv2.circle(frame, (int(markerCorners[i][0][1][0]), int(markerCorners[i][0][1][1])), 1, (0,255,0), 2)
-                frame = cv2.circle(frame, (int(markerCorners[i][0][2][0]), int(markerCorners[i][0][2][1])), 1, (0,0,255), 2)
+                frame = cv2.circle(frame, (int(markerCorners[i][0][1][0]), int(markerCorners[i][0][1][1])), 2, (0,255,0), 4)
+                frame = cv2.circle(frame, (int(markerCorners[i][0][2][0]), int(markerCorners[i][0][2][1])), 2, (0,0,255), 4)
 
                 # add to the marker id set
                 markerSet.add(markerIds[i][0])

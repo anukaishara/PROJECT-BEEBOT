@@ -1,5 +1,6 @@
 import time
 import socket
+import threading
 
 # Function to read data from the network
 def readSerialData(sock, sharedData):
@@ -29,9 +30,9 @@ def sendToSerial(sock, data):
         print(f"Failed to send data: {e}")
         raise  # Re-raise the exception to handle it in the calling function
 
-def serialAutoSend(sharedData):
-    print("serialAutoSend")
-    interval = 0.25  # 250ms between sends
+def serialAutoSend(sharedData, manual_mode=False, manual_event=None):
+    print("serialAutoSend - Manual Mode" if manual_mode else "serialAutoSend - Automatic Mode")
+    interval = 0.25  # 250ms between sends in auto mode
     reconnect_delay = 5  # seconds between reconnect attempts
     hosts = {
         '1': '192.168.192.79',  # ESP32 with ID=1
@@ -71,12 +72,19 @@ def serialAutoSend(sharedData):
                             ack = sock.recv(32)
                             if not ack:
                                 raise ConnectionError("Connection closed")
-                            #print(f"Device {id} response: {ack.decode().strip()}")
+                            print(f"Device {id} response: {ack.decode().strip()}")
                         except Exception as e:
                             print(f"Error with device {id}: {e}")
                             sockets[id] = None  # Mark for reconnection
             
-            time.sleep(interval)
+            if manual_mode:
+                # Wait for manual trigger event
+                if manual_event and manual_event.wait(1.0):  # Check every second if we should send
+                    manual_event.clear()
+                    continue
+            else:
+                # Automatic mode - sleep for interval
+                time.sleep(interval)
             
         except Exception as e:
             print(f"System error: {e}")
@@ -87,3 +95,31 @@ def serialAutoSend(sharedData):
                     sockets[id] = None
             print(f"Reconnecting in {reconnect_delay} seconds...")
             time.sleep(reconnect_delay)
+
+# Example usage:
+if __name__ == "__main__":
+    # Shared data structure example
+    shared_data = [
+        {'1': [ 0, 60, 0]},  # Data for devices
+        False,  # Error flag
+        True    # GUI enabled flag
+    ]
+    
+    # For manual mode:
+    manual_event = threading.Event()
+    
+    # Start in manual mode
+    serial_thread = threading.Thread(
+        target=serialAutoSend,
+        args=(shared_data, True, manual_event),
+        daemon=True
+    )
+    serial_thread.start()
+    
+    # To manually trigger a send:
+    while True:
+        input("Press Enter to send data manually...")
+        manual_event.set()  # This will trigger the send in the serial thread
+        
+        # You could also update the shared_data here if needed
+        # shared_data[0]['1'] = [5, 6, 7, 8]  # Update data for device 1
