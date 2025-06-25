@@ -8,9 +8,9 @@
 const int WIFI_TIMEOUT_MS = 10000;
 const int MQTT_TIMEOUT_MS = 5000;
 const int WATCHDOG_TIMEOUT_S = 10;
-const int MAX_MOTOR_SPEED = 70;
-const int MIN_MOTOR_SPEED = -70;
-double spd = 40;         // speed of the movements: [-255, 255]
+const int MAX_MOTOR_SPEED = 150;
+const int MIN_MOTOR_SPEED = -150;
+double spd = 120;         // speed of the movements: [-255, 255]
 const int JSON_BUFFER_SIZE = 256;
 
 const String RESPONSE_OK = "OK\r\n";
@@ -45,6 +45,8 @@ const int port = 8080; // Choose a port (e.g., 8080, 1234, etc.)
 // Robot ID
 String myID = "1";
 
+
+
 const float turningThresh = 5;
 const double distThresh = 20;
 //const int MPU = 0x68;
@@ -59,8 +61,6 @@ const uint8_t GYRO_CONFIG = 0x1B;
 const uint8_t GYRO_DATA = 0x43;
 const float GYRO_SCALE_1000DPS = 32.8f; // Accurate scale factor
 float GyroErrorZ = 0.0f; // Renamed for clarity
-
-
 
 
 String id = "";
@@ -92,7 +92,7 @@ bool newData = false;
 String reciveStr = "";
 
 // PID configuration
-PID myPID(&Input, &Output, &Setpoint, 3, 0, 0.23, DIRECT);
+PID myPID(&Input, &Output, &Setpoint, 0.25, 0.003, 0.01, DIRECT);
 
 void dataDecoder(char c);
 void MoL(int val);
@@ -229,6 +229,7 @@ void loop() {
           return;
         }
         Input = (double)angle;
+        //Serial.println(String(Input) );
         myPID.Compute();
 
         Serial.println(String(Output) );
@@ -261,9 +262,9 @@ void MoL(int val) {
     return;
   }
   val = constrain(val, MIN_MOTOR_SPEED, MAX_MOTOR_SPEED);
-  digitalWrite(in2, val > 0 ? HIGH : LOW);
-  digitalWrite(in1, val > 0 ? LOW : HIGH);
-  analogWrite(pwmB, abs(val));
+  digitalWrite(in1, val > 0 ? HIGH : LOW);
+  digitalWrite(in2, val > 0 ? LOW : HIGH);
+  analogWrite(pwmA, abs(val));
 }
 
 
@@ -276,9 +277,9 @@ void MoR(int val) {
     return;
   }
   val = constrain(val, MIN_MOTOR_SPEED, MAX_MOTOR_SPEED);
-  digitalWrite(in3, val > 0 ? HIGH : LOW);
-  digitalWrite(in4, val > 0 ? LOW : HIGH);
-  analogWrite(pwmA, abs(val));
+  digitalWrite(in4, val > 0 ? HIGH : LOW);
+  digitalWrite(in3, val > 0 ? LOW : HIGH);
+  analogWrite(pwmB, abs(val));
 }
 
 
@@ -365,6 +366,8 @@ bool updateGyro() {
 
     // Integrate to get angle
     angle += GyroZ * elapsedTime;
+    //Serial.println(angle);
+
     
     return true;
   }
@@ -405,6 +408,7 @@ bool calculate_IMU_error() {
   }
   
   GyroErrorZ = sumErrorZ / samples;
+  printf("Gyro error Z: %.2f\n", GyroErrorZ);
   return true;
 }
 
@@ -560,7 +564,7 @@ void turn()
     if (prvstartAngle != startAngle) // if there any changes in startAngle, set the current angle to zero and set the set point
     {
       //Setpoint = -1 * radToDegree(startAngle);
-      Setpoint =  startAngle;
+      Setpoint = startAngle;
       angle = 0;
       prvstartAngle = startAngle;
     }
@@ -571,7 +575,7 @@ void turn()
     Input = (double)angle;
     myPID.Compute();
 
-    Serial.println(String(startAngle) + ", " + String(Setpoint) + "," + String(Input) + ", " + String(Output) + ", ");
+    //Serial.println(String(startAngle) + ", " + String(Setpoint) + "," + String(Input) + ", " + String(Output) + ", ");
 
     MoL(-Output);
     MoR(Output);

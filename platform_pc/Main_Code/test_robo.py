@@ -32,7 +32,7 @@ def sendToSerial(sock, data):
 
 def serialAutoSend(sharedData, manual_mode=False, manual_event=None):
     print("serialAutoSend - Manual Mode" if manual_mode else "serialAutoSend - Automatic Mode")
-    interval = 0.25  # 250ms between sends in auto mode
+    interval = 10  # 250ms between sends in auto mode
     reconnect_delay = 5  # seconds between reconnect attempts
     hosts = {
         '1': '192.168.192.79',  # ESP32 with ID=1
@@ -100,7 +100,7 @@ def serialAutoSend(sharedData, manual_mode=False, manual_event=None):
 if __name__ == "__main__":
     # Shared data structure example
     shared_data = [
-        {'1': [ 0, 60, 0]},  # Data for devices
+        {'1': [ -90, 0, 0]},  # Data for devices
         False,  # Error flag
         True    # GUI enabled flag
     ]
