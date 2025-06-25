@@ -8,18 +8,18 @@
 const int WIFI_TIMEOUT_MS = 10000;
 const int MQTT_TIMEOUT_MS = 5000;
 const int WATCHDOG_TIMEOUT_S = 10;
-const int MAX_MOTOR_SPEED = 10;
-const int MIN_MOTOR_SPEED = -100;
-double spd = 125;         // speed of the movements: [-255, 255]
+const int MAX_MOTOR_SPEED = 150;
+const int MIN_MOTOR_SPEED = -150;
+double spd = -100;         // speed of the movements: [-255, 255]
 const int JSON_BUFFER_SIZE = 256;
 
 const String RESPONSE_OK = "OK\r\n";
 const String RESPONSE_ERROR = "ERROR\r\n";
 
 // Pin definitions
-const int redLED = 4;
-const int blueLED = 16;
-const int greenLED = 17;
+const int redLED = 16;
+const int blueLED = 17;
+const int greenLED = 4;
 
 // Motor pins
 const int pwmA = 32;
@@ -45,7 +45,9 @@ const int port = 8080; // Choose a port (e.g., 8080, 1234, etc.)
 // Robot ID
 String myID = "1";
 
-const float turningThresh = 0.15;
+
+
+const float turningThresh = 0.25;
 const double distThresh = 20;
 //const int MPU = 0x68;
 float GyroX, GyroY, GyroZ;
@@ -59,8 +61,6 @@ const uint8_t GYRO_CONFIG = 0x1B;
 const uint8_t GYRO_DATA = 0x43;
 const float GYRO_SCALE_1000DPS = 32.8f; // Accurate scale factor
 float GyroErrorZ = 0.0f; // Renamed for clarity
-
-
 
 
 String id = "";
@@ -92,7 +92,7 @@ bool newData = false;
 String reciveStr = "";
 
 // PID configuration
-PID myPID(&Input, &Output, &Setpoint, 16, 0, 0.23, DIRECT);
+PID myPID(&Input, &Output, &Setpoint, 0.25, 0.003, 0.01, DIRECT);
 
 void dataDecoder(char c);
 void MoL(int val);
@@ -171,18 +171,27 @@ void loop() {
         client.setTimeout(100); // Set a reasonable timeout
       }
   }
+    // LED status indication (non-blocking)
+  static unsigned long lastLEDUpdate = 0;
+  if(millis() - lastLEDUpdate > 1000) {
+    LED((client.connected() ? 2 : 1)); // Green=connected, Red=disconnected
+    lastLEDUpdate = millis();
+  }
+
+
+
 
   // If client is connected, read data
-  if (client && client.connected()) {
-    while (client.available() > 0) {
+  if (client.available() > 0) {
       char c = client.read();
       dataDecoder(c);
-    }
+    
   }
 
   // start turning process if the start angle is above the "turningThresh"
     if (newData) {
     Serial.println("Executing new movement command...");
+    LED(3);
 
     // Turn to start angle
       // start turning process if the start angle is above the "turningThresh"
@@ -220,11 +229,12 @@ void loop() {
           return;
         }
         Input = (double)angle;
+        //Serial.println(String(Input) );
         myPID.Compute();
 
         Serial.println(String(Output) );
-        MoL(-50);
-        MoR(-50);
+        MoL(spd-Output);
+        MoR(spd+Output);
       }
       else
       {
@@ -238,6 +248,7 @@ void loop() {
       delay(5);
 
     newData = false;
+    LED(7);
     Serial.println("Movement command completed");
 }
 }
@@ -253,7 +264,7 @@ void MoL(int val) {
   val = constrain(val, MIN_MOTOR_SPEED, MAX_MOTOR_SPEED);
   digitalWrite(in1, val > 0 ? HIGH : LOW);
   digitalWrite(in2, val > 0 ? LOW : HIGH);
-  analogWrite(pwmB, abs(val));
+  analogWrite(pwmA, abs(val));
 }
 
 
@@ -268,7 +279,7 @@ void MoR(int val) {
   val = constrain(val, MIN_MOTOR_SPEED, MAX_MOTOR_SPEED);
   digitalWrite(in4, val > 0 ? HIGH : LOW);
   digitalWrite(in3, val > 0 ? LOW : HIGH);
-  analogWrite(pwmA, abs(val));
+  analogWrite(pwmB, abs(val));
 }
 
 
@@ -320,6 +331,10 @@ void setupMotors() {
   pinMode(in3, OUTPUT);
   pinMode(in4, OUTPUT);
   pinMode(stby, OUTPUT);
+  pinMode(redLED, OUTPUT);
+  pinMode(greenLED, OUTPUT);
+  pinMode(blueLED, OUTPUT);
+
   enableMotors();
 }
 
@@ -351,6 +366,8 @@ bool updateGyro() {
 
     // Integrate to get angle
     angle += GyroZ * elapsedTime;
+    //Serial.println(angle);
+
     
     return true;
   }
@@ -391,6 +408,7 @@ bool calculate_IMU_error() {
   }
   
   GyroErrorZ = sumErrorZ / samples;
+  printf("Gyro error Z: %.2f\n", GyroErrorZ);
   return true;
 }
 
@@ -403,9 +421,9 @@ double radToDegree(double rads) {
 
 
 void LED(byte color) {
-  digitalWrite(redLED, color & 1);
+  digitalWrite(blueLED, color & 1);
   digitalWrite(greenLED, (color >> 1) & 1);
-  digitalWrite(blueLED, (color >> 2) & 1);
+  digitalWrite(redLED, (color >> 2) & 1);
 }
 
 
@@ -418,7 +436,7 @@ void intShow() {
   LED(2); // green
   delay(400);
   LED(4); // red
-  delay(200);
+  delay(400);
   LED(0);
   delay(1000);
 }
@@ -504,7 +522,7 @@ void processCompleteMessage(String message) {
     
     // Send acknowledgment
     client.print(RESPONSE_OK);
-    Serial.printf("Device %s received: %.2f,%.2f,%.2f\n", myID.c_str(), startAngle, travelDis, endAngle);
+    //Serial.printf("Device %s received: %.2f,%.2f,%.2f\n", myID.c_str(), startAngle, travelDis, endAngle);
     
     // Set flags for movement processing
     newData = true;
@@ -525,21 +543,28 @@ void turn()
 { 
   turningDone = false;
   angle = 0;                               //set the current angle to zer0
-  //Setpoint = -1 * radToDegree(startAngle); // set the setpoint as the startAngle
-  Setpoint =startAngle;
+  Setpoint = -1 * radToDegree(startAngle); // set the setpoint as the startAngle
+  //Setpoint =startAngle;
 
   prvstartAngle = startAngle; // update the prvstartAngle
-//  Serial.println("started turning PID " + String(startAngle));
+  Serial.println("started turning PID " + String(startAngle));
 
   while (!turningDone)
   {
 
-    LED(2); //green
+  LED(1); //red
+  if (client.available() > 0) {
+      char c = client.read();
+      dataDecoder(c);
+    
+  }
+
+
 
     if (prvstartAngle != startAngle) // if there any changes in startAngle, set the current angle to zero and set the set point
     {
-      //Setpoint = -1 * radToDegree(startAngle);
-      Setpoint =  startAngle;
+      Setpoint = -1 * radToDegree(startAngle);
+      //Setpoint = startAngle;
       angle = 0;
       prvstartAngle = startAngle;
     }
@@ -555,12 +580,12 @@ void turn()
     MoL(-Output);
     MoR(Output);
 
-    if(abs(startAngle) < turningThresh) // exit form the loop if the startAngle is bounded in threshold
+    if((-turningThresh < startAngle) && (turningThresh > startAngle)) // exit form the loop if the startAngle is bounded in threshold
     {
       Serial.println("turning done");
       turningDone = true;
     }
-    LED(0); //off
+    LED(2); //off
   }
   angle = 0;
   MoL(0);

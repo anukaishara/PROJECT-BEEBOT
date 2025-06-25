@@ -296,14 +296,14 @@ def camProcess(sharedData):
                 # plotting rectangles around the markers
                 pts = np.array([markerCorners[i][0][0],markerCorners[i][0][1],markerCorners[i][0][2],markerCorners[i][0][3]], np.int32)
                 pts = pts.reshape((-1,1,2))
-                cv2.polylines(frame,[pts],True,(0,255,255))
+                cv2.polylines(frame,[pts],True,(0,255,255),3)
 
                 # converting to center point
                 conData = convert(markerCorners[i][0])
                 frame = cv2.circle(frame, tuple(conData[0]), 1, (255,0,0), 2)
 
-                frame = cv2.circle(frame, (int(markerCorners[i][0][1][0]), int(markerCorners[i][0][1][1])), 1, (0,255,0), 2)
-                frame = cv2.circle(frame, (int(markerCorners[i][0][2][0]), int(markerCorners[i][0][2][1])), 1, (0,0,255), 2)
+                frame = cv2.circle(frame, (int(markerCorners[i][0][1][0]), int(markerCorners[i][0][1][1])), 1, (0,255,0), 10)
+                frame = cv2.circle(frame, (int(markerCorners[i][0][2][0]), int(markerCorners[i][0][2][1])), 1, (0,0,255), 10)
 
                 # add to the marker id set
                 markerSet.add(markerIds[i][0])
