@@ -10,7 +10,7 @@ const int MQTT_TIMEOUT_MS = 5000;
 const int WATCHDOG_TIMEOUT_S = 10;
 const int MAX_MOTOR_SPEED = 150;
 const int MIN_MOTOR_SPEED = -150;
-double spd = -120;         // speed of the movements: [-255, 255]
+double spd = -100;         // speed of the movements: [-255, 255]
 const int JSON_BUFFER_SIZE = 256;
 
 const String RESPONSE_OK = "OK\r\n";
@@ -47,7 +47,7 @@ String myID = "1";
 
 
 
-const float turningThresh = 5;
+const float turningThresh = 0.25;
 const double distThresh = 20;
 //const int MPU = 0x68;
 float GyroX, GyroY, GyroZ;
@@ -543,8 +543,8 @@ void turn()
 { 
   turningDone = false;
   angle = 0;                               //set the current angle to zer0
-  //Setpoint = -1 * radToDegree(startAngle); // set the setpoint as the startAngle
-  Setpoint =startAngle;
+  Setpoint = -1 * radToDegree(startAngle); // set the setpoint as the startAngle
+  //Setpoint =startAngle;
 
   prvstartAngle = startAngle; // update the prvstartAngle
   Serial.println("started turning PID " + String(startAngle));
@@ -563,8 +563,8 @@ void turn()
 
     if (prvstartAngle != startAngle) // if there any changes in startAngle, set the current angle to zero and set the set point
     {
-      //Setpoint = -1 * radToDegree(startAngle);
-      Setpoint = startAngle;
+      Setpoint = -1 * radToDegree(startAngle);
+      //Setpoint = startAngle;
       angle = 0;
       prvstartAngle = startAngle;
     }

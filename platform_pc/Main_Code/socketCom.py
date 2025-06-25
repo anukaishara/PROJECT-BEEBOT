@@ -63,7 +63,7 @@ def serialAutoSend(sharedData):
                     print(f"Sending data to device {id}")
                     for id in sharedData[0]:  # If we have data for this ID
                         data = str(id) + ',' + ','.join(map(str, sharedData[0][id])) 
-                        print("Network send:", data)
+                        #print("Network send:", data)
                         
                         try:
                             sock.sendall((data + "\n").encode())
