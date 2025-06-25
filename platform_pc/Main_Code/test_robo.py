@@ -100,7 +100,7 @@ def serialAutoSend(sharedData, manual_mode=False, manual_event=None):
 if __name__ == "__main__":
     # Shared data structure example
     shared_data = [
-        {'1': [ -90, 0, 0]},  # Data for devices
+        {'1': [ 0, 60, 0]},  # Data for devices
         False,  # Error flag
         True    # GUI enabled flag
     ]

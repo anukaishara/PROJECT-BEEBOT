@@ -10,7 +10,7 @@ const int MQTT_TIMEOUT_MS = 5000;
 const int WATCHDOG_TIMEOUT_S = 10;
 const int MAX_MOTOR_SPEED = 150;
 const int MIN_MOTOR_SPEED = -150;
-double spd = 120;         // speed of the movements: [-255, 255]
+double spd = -120;         // speed of the movements: [-255, 255]
 const int JSON_BUFFER_SIZE = 256;
 
 const String RESPONSE_OK = "OK\r\n";
