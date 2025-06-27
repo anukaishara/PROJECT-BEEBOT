@@ -1,5 +1,5 @@
 import MQTT from 'paho-mqtt';
-import { serverList } from './servers.js'
+import { serverList, findServer } from './servers.js'
 import { decryptString, decrypt, encryptString } from './encrypt.js'
 
 
@@ -8,8 +8,8 @@ let TOPIC_SEVER_BOT_POS = ''; // topic that server publishes bot positions - [un
 let TOPIC_SEVER_COM = '' //topic that server and a client communicate - [bidirectional]
 const TOPIC_COM = 'swarm/common' // common data line for all the clients and servers - [bidirectional]
 
-const mqtt_server = "broker.mqttdashboard.com";
-const mqtt_port = 8000;
+const mqtt_server = "test.mosquitto.org";
+const mqtt_port = 8081;
 let mqtt_client;
 let client_id = null;
 let connected = false
@@ -27,7 +27,7 @@ export function mqttClient() {
     client_id = 'client_' + Math.random().toString(36).substring(2, 15); // create a random client Id
     // connect to the broker
     mqtt_client = new MQTT.Client(mqtt_server, mqtt_port, client_id);
-    mqtt_client.connect({ reconnect: true, onSuccess: onConnect, onFailure: onFailure });
+    mqtt_client.connect({ useSSL: true, reconnect: true, onSuccess: onConnect, onFailure: onFailure });
     return mqtt_client;
 
 }
@@ -43,24 +43,16 @@ export function onConnect() {
     // Subscribe to topics
     mqtt_client.subscribe(TOPIC_COM);
 
+    // Now safe to find and connect to server
+    findServer();
+
 }
 export function onFailure() {
     console.log('MQTT: connection failed');
 }
 
 export function onMessageArrived(message_) {
-
-    //message recieve tesing ----------------------------------------------------
-
-    //string decrypt & decoding
-    // console.log(new TextDecoder().decode(decrypt(message_.payloadBytes)))
-
-    //proto decrypt & decoding
-    // let posList = messages.BotPositionArr.deserializeBinary(decrypt(message_.payloadBytes)).getPositionsList();
-    // console.log(posList)
-
-    // return 
-    //---------------------------------------------------------------------------
+    console.log("MQTT message arrived:", message_);
     try {
 
         if (message_.topic == TOPIC_SEVER_BOT_POS) {
@@ -68,6 +60,10 @@ export function onMessageArrived(message_) {
             let s = messages.BotPositionArr.deserializeBinary(message_.payloadBytes);
             mqtt_data = s.getPositionsList()
             newData = true;
+            // Log all bot positions
+            mqtt_data.forEach((bot, idx) => {
+                console.log(`Bot ${idx}: x=${bot.getXCod()}, y=${bot.getYCod()}, angle=${bot.getAngle()}`);
+            });
 
         } else {
             
@@ -85,17 +81,20 @@ export function onMessageArrived(message_) {
                     if (messageString[1] == "success") {
                         console.log("server connecion success", messageString[2])
                         serverData = JSON.parse(messageString[2])
+                        console.log("Received bot count:", serverData.bot_count);
+                        console.log("Received arena dimension:", serverData.areana_dim);
                     } else {
                         serverData = null
                         console.log("server connecion refused")
                     }
                 }
                 if (messageString[0] == "ping") {
+                    console.log('Ping response received from server.');
                     pingAck = true
                 }
 
                 if (messageString[0] == "battStat") {
-                    battStat_callback(messageString[1])
+                    if (battStat_callback) battStat_callback(messageString[1]);
                 }
             }
         }
@@ -108,7 +107,7 @@ export function onMessageArrived(message_) {
 }
 
 // this functions id used to connect to a specific server
-export function connenctToServer(serverIdx) {
+export function connectToServer(serverIdx) {
     if (Object.keys(serverList).length != 0) {
 
         TOPIC_SEVER_BOT_POS = 'swarm/' + serverList[serverIdx][0] + '/bot_pos'
@@ -137,6 +136,7 @@ export function battStat(callback) {
 }
 
 export function resetServerData() {
+    console.log("resetServerData called, setting serverData to null");
     serverData = null
 }
 export function onConnectionLost(response) {
@@ -152,7 +152,7 @@ export function publish(topic, message) {
     }
 }
 export function setNewDataState(state) {
-    newData = false;
+    newData = state;
 }
 
 export function setPingAck(state) {
