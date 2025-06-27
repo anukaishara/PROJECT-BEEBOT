@@ -112,9 +112,6 @@ function init() {
     setTimeout(updateBots, 1000);
 
 
-    //handles the connection with the server
-    findServer();
-
     //add thw event listner
     addEventListeners()
 

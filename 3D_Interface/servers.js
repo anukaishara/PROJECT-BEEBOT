@@ -1,4 +1,4 @@
-import { connenctToServer, serverData, pingAck, ping, setPingAck, resetServerData } from './mqttClient'
+import { connectToServer, serverData, pingAck, ping, setPingAck, resetServerData } from './mqttClient'
 
 
 
@@ -6,7 +6,10 @@ let icons = ['fas fa-globe-americas', 'fas fa-globe-europe', 'fas fa-globe-afric
 let count = 0;
 var online = false
 var serverIdx = 0; //the index of the server that needed to be connected
-export var serverList = {}
+export let serverList = {}
+let pingFailures = 0;
+const MAX_PING_FAILURES = 3;
+
 export function animateInternetIcon() {
 
     if (online) {
@@ -30,11 +33,10 @@ export function animateInternetIcon() {
 }
 
 export function setOnline() {
-
+    // This function is currently unused. Remove or implement as needed.
 }
 
 export function findServer() {
-    
     //search for available servers
     if (Object.keys(serverList).length == 0) {
         console.log("ServerList Empty");
@@ -43,40 +45,51 @@ export function findServer() {
         setTimeout(findServer, 2000);
     } else {
         if (serverData != null) {
-            // if there are any online servers
+            console.log("findServer: serverData is set, going online");
             document.getElementById('serverName').textContent = serverList[serverIdx][1]
             online = true;
             pingServer()
             animateInternetIcon()
         } else {
             // connect to a specified server by the index, following is set to "0" for now
-            connenctToServer(serverIdx);
+            connectToServer(serverIdx);
             console.log("Trying to connect: "+serverList[serverIdx][1]);
             setTimeout(findServer, 2000);
         }
-
     }
-
 }
 
 // ping the server
 function pingServer(){
     if(online){
         setTimeout(()=>{
-            online = pingAck 
-            setPingAck(false) //set the pingAck = false to detect if it will be true after pinging the server
-            ping()  // ping the server 
-            pingServer() // recurse the function
-        },1000)
-    }else{
-        //this block run in a disconnection 
-        setPingAck(true) // pingAck should be true to initiate the pinging 
-        document.getElementById('serverName').textContent = "Reconnecting..."
-        resetServerData(); // server data is set to null to force the findServer() function to call connectToServer() function
+            console.log(`pingAck: ${pingAck}, pingFailures: ${pingFailures}`);
+            if (!pingAck) {
+                pingFailures++;
+                console.log(`Missed ping! Failures: ${pingFailures}`);
+            } else {
+                if (pingFailures > 0) console.log('Ping successful, resetting failures.');
+                pingFailures = 0;
+            }
+            setPingAck(false);
+            ping();
+            if (pingFailures >= MAX_PING_FAILURES) {
+                console.log('Too many missed pings, going offline.');
+                online = false;
+            }
+            pingServer();
+        }, 2000) // Increased interval to 2 seconds
+    } else {
+        console.log('Reconnecting due to ping failures...');
+        pingFailures = 0;
+        setPingAck(true);
+        document.getElementById('serverName').textContent = "Reconnecting...";
+        resetServerData();
         findServer();
     }
 }
 
 export function updateServerList(){
-    serverList = {0:[0, "platform PC UOP"]}
+    Object.keys(serverList).forEach(key => delete serverList[key]);
+    serverList[0] = [0, "Embedded Pro"];
 }
