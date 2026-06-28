@@ -1,0 +1,49 @@
+#include <WiFi.h>
+
+const char* ssid = "ZTE Blade V50 Design";
+const char* password = "12345678malith";
+const int port = 8080; // Choose a port (e.g., 8080, 1234, etc.)
+
+WiFiServer server(port);
+
+void setup() {
+  Serial.begin(115200);
+  
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.println("Connecting to WiFi...");
+  }
+  
+  Serial.println("Connected to WiFi!");
+  Serial.print("ESP32 IP Address: ");
+  Serial.println(WiFi.localIP()); // ← This is the IP you need
+  
+  server.begin();
+  Serial.println("TCP Server started on port " + String(port));
+}
+
+void loop() {
+  WiFiClient client = server.available();
+  if (client) {
+    // Handle client communication here
+    while (client.connected()) {
+      if (client.available()) {
+        String data = client.readStringUntil('\n');
+        Serial.println("Received: " + data);
+        client.println("OK"); // Send response back
+      }
+    }
+    client.stop();
+  }
+}
+
+
+        Serial.print("Received Data -> startAngle: ");
+        Serial.print(startAngle);
+        Serial.print(", travelDis: ");
+        Serial.print(travelDis);
+        Serial.print(", endAngle: ");
+        Serial.println(endAngle);
+
+

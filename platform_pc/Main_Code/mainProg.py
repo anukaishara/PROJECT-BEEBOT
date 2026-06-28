@@ -8,7 +8,7 @@
 #    (e.g., MQTT_msg_pb2.py)
 #
 # 3. This script connects to the public MQTT broker at test.mosquitto.org using TCP (port 1883).
-#    Your browser client (3D_Interface) should use wss://test.mosquitto.org:8081/mqtt.
+#    Your browser client (interface/) should use wss://test.mosquitto.org:8081/mqtt.
 #    Both must use the same topic names for communication.
 # =====================
 

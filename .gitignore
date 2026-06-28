@@ -1,3 +1,14 @@
+# Large media files
+*.mp4
+*.avi
+*.mov
+
+# Node / Parcel build artifacts
+node_modules/
+.parcel-cache/
+*.heapsnapshot
+dist/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
